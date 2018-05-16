@@ -17,6 +17,8 @@ This data comes from the mlb statcast dataset. The data can be found at the abov
 library(tidyverse)
 library(stringr)
 library(rvest)
+library(ggplot2)
+library(plotly)
 
 
 final_pitching_data_table <- read_csv("redsox_pitching_5132018.csv")
@@ -86,11 +88,42 @@ plate_x: the left/right distance, in feet, of the pitch from the middle of the p
 plate_z: the height of the pitch in feet as it crossed the front of home plate.
 
 
-
 ```{r at bats}
 mookie_bat_data <- mookie_data %>%
-  select(events, pitch_name, release_speed, pitcher, bb_type, pfx_x, pfx_z, plate_x, plate_z, launch_angle, launch_speed, hit_distance_sc)
+  select(events, pitch_name, release_speed, pitcher, bb_type, pfx_x, pfx_z, plate_x, plate_z, launch_angle, launch_speed, hit_distance_sc, sz_top, sz_bot)
 mookie_bat_data %>%
   filter(events=="home_run") %>%
   head()
+```
+
+Before we can analyze and graph this we need to clean it up.
+```{R cleaning}
+mookie_bat_data <- mookie_bat_data %>%
+  type_convert(cols(release_speed=col_double(), pfx_x=col_double(), pfx_z=col_double(), plate_x=col_double(), plate_z=col_double(), launch_angle=col_double(), launch_speed=col_double(), hit_distance_sc=col_integer(), sz_top=col_double(), sz_bot=col_double()))
+
+mookie_bat_data$pitch_name <- as.factor(mookie_bat_data$pitch_name)
+mookie_bat_data$events <- as.factor(mookie_bat_data$events)
+mookie_bat_data$bb_type <- as.factor(mookie_bat_data$bb_type)
+head(mookie_bat_data)
+```
+```{r graphing}
+strike_zone_top <- mean(mookie_bat_data$sz_top, na.rm=TRUE)
+strike_zone_bot <- mean(mookie_bat_data$sz_bot, na.rm=TRUE)
+strike_zone_front <- 17/2.0/12
+
+
+graphed <- ggplot() + geom_rect(aes(xmin=-strike_zone_front, xmax=strike_zone_front, ymin=strike_zone_bot, ymax=strike_zone_top), color="black", fill=NA) + geom_point(data=mookie_bat_data, aes(x=plate_x, y=plate_z, text=sprintf("events: %s<br>Pitch Name: %s<br>Release Speed: %s<br>Launch Angle: %s", events, pitch_name, release_speed, launch_angle))) +
+  scale_x_continuous(name="Catchers View | left/right distance in feet of center of plat", limits=c(-4, 4), breaks=seq(from=-4, to=4, by=2)) + scale_y_continuous(name="Height above plate In Feet", limits=c(-2, 6), breaks=seq(from=-2, to=6, by=1))
+
+ggplotly(graphed) 
+```
+This is rather ugly. Lets do pitches that result in action and color code it by the event that happens.
+```{r hits}
+action <- mookie_bat_data %>%
+  filter(events!="null")
+
+graphed <- ggplot() + geom_rect(aes(xmin=-strike_zone_front, xmax=strike_zone_front, ymin=strike_zone_bot, ymax=strike_zone_top), color="black", fill=NA) + geom_point(data=action, aes(x=plate_x, y=plate_z, text=sprintf("events: %s<br>Pitch Name: %s<br>Release Speed: %s<br>Launch Angle: %s", events, pitch_name, release_speed, launch_angle), color=events)) +
+  scale_x_continuous(name="Catchers View | left/right distance in feet of center of plat", limits=c(-4, 4), breaks=seq(from=-4, to=4, by=2)) + scale_y_continuous(name="Height above plate In Feet", limits=c(-2, 6), breaks=seq(from=-2, to=6, by=1))
+
+ggplotly(graphed) 
 ```
