@@ -13,7 +13,7 @@ url_batting = https://baseballsavant.mlb.com/statcast_search?hfPT=&hfAB=&hfBBT=&
 
 This data comes from the mlb statcast dataset. The data can be found at the above urls by clicking on the icon above the graphs column in the table. Then load the data as shown below.
 
-```{r setup, include=TRUE}
+```{r setup, include=TRUE,  message=F, warning=F}
 library(tidyverse)
 library(stringr)
 library(rvest)
@@ -33,7 +33,7 @@ head(final_batting_data_table)
 ## Create ID Tables
 If we look at the pitching and batting data we will notice that there are fields with ids that are not translated to names. So we will use the batting and pitching data to generate ids for each person. Since the player_name is the name of the batter/pitcher in their respective data sets we should be able to get all the ids by extracting the player_name with the batter field for the batting table and the player_name field with the pitcher field for the pitching data.
 
-```{r get id table, include=TRUE}
+```{r get id table, include=TRUE, message=F, warning=F}
 batter_id_table <- final_batting_data_table %>%
   group_by(player_name, batter) %>%
   select(player_name, batter) %>%
@@ -52,16 +52,16 @@ head(pitcher_id_table)
 ## Get Mookie Betts Data
 Mookie Betts is having a standout season. I would like to focus on data regarding Mookie's at bats.
 
-```{r get mookie data}
+```{r get mookie data,  message=F, warning=F}
 mookie_data <- final_batting_data_table %>%
   filter(player_name=="Mookie Betts")
 
-mookie_data
+head(mookie_data)
 
 ```
 
 ## Events
-```{r mookie at bat events}
+```{r mookie at bat events,  message=F, warning=F}
 mookie_data <- mookie_data %>%
   mutate(rbi=post_bat_score-bat_score)
   
@@ -70,7 +70,7 @@ mookie_data %>%
   summarize(count=n())
 ```
 Lets look at the at bats but grouped based on pitch type.
-```{r at bat pitch type}
+```{r at bat pitch type,  message=F, warning=F}
 mookie_data %>%
   group_by(events, pitch_name) %>%
   summarize(count=n())
@@ -88,7 +88,7 @@ plate_x: the left/right distance, in feet, of the pitch from the middle of the p
 plate_z: the height of the pitch in feet as it crossed the front of home plate.
 
 
-```{r at bats}
+```{r at bats,  message=F, warning=F}
 mookie_bat_data <- mookie_data %>%
   select(events, pitch_name, release_speed, pitcher, bb_type, pfx_x, pfx_z, plate_x, plate_z, launch_angle, launch_speed, hit_distance_sc, sz_top, sz_bot)
 mookie_bat_data %>%
@@ -97,7 +97,7 @@ mookie_bat_data %>%
 ```
 
 Before we can analyze and graph this we need to clean it up.
-```{R cleaning}
+```{R cleaning,  message=F, warning=F}
 mookie_bat_data <- mookie_bat_data %>%
   type_convert(cols(release_speed=col_double(), pfx_x=col_double(), pfx_z=col_double(), plate_x=col_double(), plate_z=col_double(), launch_angle=col_double(), launch_speed=col_double(), hit_distance_sc=col_integer(), sz_top=col_double(), sz_bot=col_double()))
 
@@ -106,24 +106,34 @@ mookie_bat_data$events <- as.factor(mookie_bat_data$events)
 mookie_bat_data$bb_type <- as.factor(mookie_bat_data$bb_type)
 head(mookie_bat_data)
 ```
-```{r graphing}
+```{r graphing,  message=F, warning=F}
 strike_zone_top <- mean(mookie_bat_data$sz_top, na.rm=TRUE)
 strike_zone_bot <- mean(mookie_bat_data$sz_bot, na.rm=TRUE)
 strike_zone_front <- 17/2.0/12
 
 
 graphed <- ggplot() + geom_rect(aes(xmin=-strike_zone_front, xmax=strike_zone_front, ymin=strike_zone_bot, ymax=strike_zone_top), color="black", fill=NA) + geom_point(data=mookie_bat_data, aes(x=plate_x, y=plate_z, text=sprintf("events: %s<br>Pitch Name: %s<br>Release Speed: %s<br>Launch Angle: %s", events, pitch_name, release_speed, launch_angle))) +
-  scale_x_continuous(name="Catchers View | left/right distance in feet of center of plat", limits=c(-4, 4), breaks=seq(from=-4, to=4, by=2)) + scale_y_continuous(name="Height above plate In Feet", limits=c(-2, 6), breaks=seq(from=-2, to=6, by=1))
+  scale_x_continuous(name="Catchers View | left/right distance in feet of center of plate", limits=c(-4, 4), breaks=seq(from=-4, to=4, by=2)) + scale_y_continuous(name="Height above plate In Feet", limits=c(-2, 6), breaks=seq(from=-2, to=6, by=1))
 
 ggplotly(graphed) 
 ```
 This is rather ugly. Lets do pitches that result in action and color code it by the event that happens.
-```{r hits}
+```{r hits,  message=F, warning=F}
 action <- mookie_bat_data %>%
   filter(events!="null")
 
 graphed <- ggplot() + geom_rect(aes(xmin=-strike_zone_front, xmax=strike_zone_front, ymin=strike_zone_bot, ymax=strike_zone_top), color="black", fill=NA) + geom_point(data=action, aes(x=plate_x, y=plate_z, text=sprintf("events: %s<br>Pitch Name: %s<br>Release Speed: %s<br>Launch Angle: %s", events, pitch_name, release_speed, launch_angle), color=events)) +
-  scale_x_continuous(name="Catchers View | left/right distance in feet of center of plat", limits=c(-4, 4), breaks=seq(from=-4, to=4, by=2)) + scale_y_continuous(name="Height above plate In Feet", limits=c(-2, 6), breaks=seq(from=-2, to=6, by=1))
+  scale_x_continuous(name="Catchers View | left/right distance in feet of center of plate", limits=c(-4, 4), breaks=seq(from=-4, to=4, by=2)) + scale_y_continuous(name="Height above plate In Feet", limits=c(-2, 6), breaks=seq(from=-2, to=6, by=1))
+
+ggplotly(graphed) 
+```
+Mookie leads the league in HRS.
+```{r hrs,  message=F, warning=F}
+action <- mookie_bat_data %>%
+  filter(events!="null")
+
+graphed <- ggplot() + geom_rect(aes(xmin=-strike_zone_front, xmax=strike_zone_front, ymin=strike_zone_bot, ymax=strike_zone_top), color="black", fill=NA) + geom_point(data=action, aes(x=plate_x, y=plate_z, text=sprintf("events: %s<br>Pitch Name: %s<br>Release Speed: %s<br>Launch Angle: %s", events, pitch_name, release_speed, launch_angle), color=events)) +
+  scale_x_continuous(name="Catchers View | left/right distance in feet of center of plate", limits=c(-4, 4), breaks=seq(from=-4, to=4, by=2)) + scale_y_continuous(name="Height above plate In Feet", limits=c(-2, 6), breaks=seq(from=-2, to=6, by=1))
 
 ggplotly(graphed) 
 ```
