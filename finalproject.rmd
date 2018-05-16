@@ -5,29 +5,92 @@ date: "May 13, 2018"
 output: html_document
 ---
 
-## Requirements
-Summary
-In lieu of a final exam, CMSC320 students will turn in a tutorial that will walk users through the entire data science pipeline: data curation, parsing, and management; exploratory data analysis; hypothesis testing and machine learning to provide analysis; and then the curation of a message or messages covering insights learned during the tutorial. Students may choose an application area and dataset(s) that are of interest to them; please feel free to be creative about this!
-
-Remember, the course resources page has a number of data repositories from where you can download data. You could also create your own dataset using scraping skills you have learned in class. We in fact, encourage this.
-
-The tutorial should be self-contained as an Rmarkdown document, and delivered as a GitHub statically-hosted Page (described below). You can see examples here: https://www.kaggle.com/kernels?sortBy=votes&group=everyone&pageSize=20&language=R
-
-In general, the tutorial should contain at least 1500 words of prose and 150 lines of (nonpadded, legitimate) R code, along with appropriate documentation, visualization, and links to any external information that might help the reader.
-
-
-Grading
-We will assign a numeric score between 1 and 10 for each of the following six criteria:
-
-Motivation. Does the tutorial make the reader believe the topic is relevant or important (i) in general and (ii) with respect to data science?
-Understanding. After reading through the tutorial, does an uninformed reader feel informed about the topic? Would a reader who already knew about the topic feel like s/he learned more about it?
-Other resources. Does the tutorial link out to other resources (on the web, in books, etc) that would give a lagging reader additional help on specific topics, or an advanced reader the ability to dive more deeply into a specific application area or technique?
-Prose. Does the prose portion of the tutorial actually add to the content of the deliverable?
-Code. Is the code well written, well documented, reproducible, and does it help the reader understand the tutorial? Does it give good examples of specific techniques?
-Subjective evaluation. If somebody linked to this tutorial from, say, Hacker News, would people actually read through the entire thing?
-The project is listed as 10% of the course grade in the syllabus. However, if you do exceptionally well in the final project (at least 55 of 60 points), we will count your final project as 20% of the grade (all other grades are downgraded uniformly) if that results in a better final course grade.
 
 ## Intro
-url = https://baseballsavant.mlb.com/statcast_search?hfPT=&hfAB=&hfBBT=&hfPR=&hfZ=&stadium=&hfBBL=&hfNewZones=&hfGT=R%7C&hfC=&hfSea=2018%7C&hfSit=&player_type=pitcher&hfOuts=&opponent=&pitcher_throws=&batter_stands=&hfSA=&game_date_gt=&game_date_lt=&team=&position=&hfRO=&home_road=&batters_lookup%5B%5D=643217&batters_lookup%5B%5D=605141&batters_lookup%5B%5D=593428&batters_lookup%5B%5D=598265&batters_lookup%5B%5D=646240&batters_lookup%5B%5D=571788&batters_lookup%5B%5D=506702&batters_lookup%5B%5D=624407&batters_lookup%5B%5D=502110&batters_lookup%5B%5D=519048&batters_lookup%5B%5D=456488&batters_lookup%5B%5D=434670&batters_lookup%5B%5D=596119&batters_lookup%5B%5D=543877&hfFlag=&metric_1=&hfInn=&min_pitches=0&min_results=0&group_by=name&sort_col=pitches&player_event_sort=h_launch_speed&sort_order=desc&min_abs=0#results
+url_pitching = https://baseballsavant.mlb.com/statcast_search?hfPT=&hfAB=&hfBBT=&hfPR=&hfZ=&stadium=&hfBBL=&hfNewZones=&hfGT=R%7C&hfC=&hfSea=2018%7C&hfSit=&player_type=pitcher&hfOuts=&opponent=&pitcher_throws=&batter_stands=&hfSA=&game_date_gt=&game_date_lt=&team=BOS&position=&hfRO=&home_road=&hfFlag=&metric_1=&hfInn=&min_pitches=0&min_results=0&group_by=name&sort_col=pitches&player_event_sort=h_launch_speed&sort_order=desc&min_abs=0#results
 
-url = http://mlb.mlb.com/stats/sortable.jsp?c_id=bos#game_type='R'&season=2018&league_code='MLB'&split=&playerType=ALL&sectionType=sp&statType=hitting&elem=%5Bobject+Object%5D&tab_level=child&click_text=Sortable+Player+hitting&season_type=ANY&page=1&ts=1526240786294
+url_batting = https://baseballsavant.mlb.com/statcast_search?hfPT=&hfAB=&hfBBT=&hfPR=&hfZ=&stadium=&hfBBL=&hfNewZones=&hfGT=R%7C&hfC=&hfSea=2018%7C&hfSit=&player_type=batter&hfOuts=&opponent=&pitcher_throws=&batter_stands=&hfSA=&game_date_gt=&game_date_lt=&team=BOS&position=&hfRO=&home_road=&hfFlag=&metric_1=&hfInn=&min_pitches=0&min_results=0&group_by=name&sort_col=pitches&player_event_sort=h_launch_speed&sort_order=desc&min_abs=0#results
+
+This data comes from the mlb statcast dataset. The data can be found at the above urls by clicking on the icon above the graphs column in the table. Then load the data as shown below.
+
+```{r setup, include=TRUE}
+library(tidyverse)
+library(stringr)
+library(rvest)
+
+
+final_pitching_data_table <- read_csv("redsox_pitching_5132018.csv")
+final_batting_data_table <- read_csv("redsox_batting_5132018.csv")
+
+head(final_pitching_data_table)
+
+head(final_batting_data_table)
+```
+
+
+## Create ID Tables
+If we look at the pitching and batting data we will notice that there are fields with ids that are not translated to names. So we will use the batting and pitching data to generate ids for each person. Since the player_name is the name of the batter/pitcher in their respective data sets we should be able to get all the ids by extracting the player_name with the batter field for the batting table and the player_name field with the pitcher field for the pitching data.
+
+```{r get id table, include=TRUE}
+batter_id_table <- final_batting_data_table %>%
+  group_by(player_name, batter) %>%
+  select(player_name, batter) %>%
+  distinct
+
+pitcher_id_table <- final_pitching_data_table %>%
+  group_by(player_name, pitcher) %>%
+  select(player_name, pitcher) %>%
+  distinct
+
+head(batter_id_table)
+
+head(pitcher_id_table)
+```
+
+## Get Mookie Betts Data
+Mookie Betts is having a standout season. I would like to focus on data regarding Mookie's at bats.
+
+```{r get mookie data}
+mookie_data <- final_batting_data_table %>%
+  filter(player_name=="Mookie Betts")
+
+mookie_data
+
+```
+
+## Events
+```{r mookie at bat events}
+mookie_data <- mookie_data %>%
+  mutate(rbi=post_bat_score-bat_score)
+  
+mookie_data %>%
+  group_by(events) %>%
+  summarize(count=n())
+```
+Lets look at the at bats but grouped based on pitch type.
+```{r at bat pitch type}
+mookie_data %>%
+  group_by(events, pitch_name) %>%
+  summarize(count=n())
+```
+
+Some raw data
+links to column names https://fastballs.wordpress.com/category/pitchfx-glossary/
+
+pfx_x: the horizontal movement, in inches, of the pitch between the release point and home plate, as compared to a theoretical pitch thrown at the same speed with no spin-induced movement. This parameter is measured at y=40 feet regardless of the y0 value.
+
+pfx_z: the vertical movement, in inches, of the pitch between the release point and home plate, as compared to a theoretical pitch thrown at the same speed with no spin-induced movement. This parameter is measured at y=40 feet regardless of the y0 value.
+
+plate_x: the left/right distance, in feet, of the pitch from the middle of the plate as it crossed home plate. The PITCHf/x coordinate system is oriented to the catcher’s/umpire’s perspective, with distances to the right being positive and to the left being negative.
+
+plate_z: the height of the pitch in feet as it crossed the front of home plate.
+
+
+
+```{r at bats}
+mookie_bat_data <- mookie_data %>%
+  select(events, pitch_name, release_speed, pitcher, bb_type, pfx_x, pfx_z, plate_x, plate_z, launch_angle, launch_speed, hit_distance_sc)
+mookie_bat_data %>%
+  filter(events=="home_run") %>%
+  head()
+```
