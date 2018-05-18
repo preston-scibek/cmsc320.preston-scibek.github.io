@@ -19,6 +19,8 @@ library(stringr)
 library(rvest)
 library(ggplot2)
 library(plotly)
+library(tree)
+library(randomForest)
 
 
 final_pitching_data_table <- read_csv("redsox_pitching_5132018.csv")
@@ -130,10 +132,39 @@ ggplotly(graphed)
 Mookie leads the league in HRS.
 ```{r hrs,  message=F, warning=F}
 action <- mookie_bat_data %>%
-  filter(events!="null")
+  filter(events == "home_run")
 
-graphed <- ggplot() + geom_rect(aes(xmin=-strike_zone_front, xmax=strike_zone_front, ymin=strike_zone_bot, ymax=strike_zone_top), color="black", fill=NA) + geom_point(data=action, aes(x=plate_x, y=plate_z, text=sprintf("events: %s<br>Pitch Name: %s<br>Release Speed: %s<br>Launch Angle: %s", events, pitch_name, release_speed, launch_angle), color=events)) +
+graphed <- ggplot() + geom_rect(aes(xmin=-strike_zone_front, xmax=strike_zone_front, ymin=strike_zone_bot, ymax=strike_zone_top), color="black", fill=NA) + geom_point(data=action, aes(x=plate_x, y=plate_z, text=sprintf("events: %s<br>Pitch Name: %s<br>Release Speed: %s<br>Launch Angle: %s", events, pitch_name, release_speed, launch_angle), color=pitch_name)) +
   scale_x_continuous(name="Catchers View | left/right distance in feet of center of plate", limits=c(-4, 4), breaks=seq(from=-4, to=4, by=2)) + scale_y_continuous(name="Height above plate In Feet", limits=c(-2, 6), breaks=seq(from=-2, to=6, by=1))
 
 ggplotly(graphed) 
+```
+
+Lets try to predict the outcome of a pitch.
+```{r predict}
+set.seed(1234)
+train_indices <- sample(nrow(mookie_bat_data), nrow(mookie_bat_data)/2)
+train_set <- mookie_bat_data[train_indices,]
+test_set <- mookie_bat_data[-train_indices,]
+
+mookie_bat_data_converted <- mookie_bat_data %>%
+  filter(events!="null") %>%
+  filter(events!="intent_walk") %>%
+  select(events, pitch_name, release_speed, plate_x, plate_z)
+
+
+
+#mookie_bat_data_converted$pitch_name = as.numeric(mookie_bat_data_converted$pitch_name)
+#mookie_bat_data_converted$events = as.numeric(mookie_bat_data_converted$events)
+mookie_bat_data_converted 
+mookie_tree <- tree(events~pitch_name+plate_x+plate_z+release_speed, data=mookie_bat_data_converted)
+plot(mookie_tree)
+text(mookie_tree, pretty=0)
+
+# Random Forest
+
+#mookie_rf <- randomForest(events~pitch_name+plate_x+plate_z, importance=TRUE, mtry=3, data=train_set, na.action=na.roughfix)
+
+#variable_importance <- importance(mookie_rf)
+#knitr::kable(head(round(variable_importance, digits=2)))
 ```
