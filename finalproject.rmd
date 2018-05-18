@@ -21,7 +21,9 @@ library(ggplot2)
 library(plotly)
 library(tree)
 library(randomForest)
-
+library(png)
+library(caret) 
+library(rpart)
 
 final_pitching_data_table <- read_csv("redsox_pitching_5132018.csv")
 final_batting_data_table <- read_csv("redsox_batting_5132018.csv")
@@ -129,7 +131,7 @@ graphed <- ggplot() + geom_rect(aes(xmin=-strike_zone_front, xmax=strike_zone_fr
 
 ggplotly(graphed) 
 ```
-Mookie leads the league in HRS.
+Mookie leads the league in HRS. Let's filter by home runs and then graph the hrs colored by pitch.
 ```{r hrs,  message=F, warning=F}
 action <- mookie_bat_data %>%
   filter(events == "home_run")
@@ -141,30 +143,115 @@ ggplotly(graphed)
 ```
 
 Lets try to predict the outcome of a pitch.
-```{r predict}
+```{r predict,  message=F, warning=F}
 set.seed(1234)
-train_indices <- sample(nrow(mookie_bat_data), nrow(mookie_bat_data)/2)
-train_set <- mookie_bat_data[train_indices,]
-test_set <- mookie_bat_data[-train_indices,]
-
 mookie_bat_data_converted <- mookie_bat_data %>%
   filter(events!="null") %>%
   filter(events!="intent_walk") %>%
+  filter(!is.na(plate_x)) %>%
   select(events, pitch_name, release_speed, plate_x, plate_z)
 
 
 
-#mookie_bat_data_converted$pitch_name = as.numeric(mookie_bat_data_converted$pitch_name)
-#mookie_bat_data_converted$events = as.numeric(mookie_bat_data_converted$events)
+
 mookie_bat_data_converted 
 mookie_tree <- tree(events~pitch_name+plate_x+plate_z+release_speed, data=mookie_bat_data_converted)
+
+# We will save the plot as a png to deal with overlapping graphics
+png("image.png", width = 1200, height = 700)
 plot(mookie_tree)
-text(mookie_tree, pretty=0)
+text(mookie_tree, pretty=1, cex=1.1)
+dev.off()
 
-# Random Forest
-
-#mookie_rf <- randomForest(events~pitch_name+plate_x+plate_z, importance=TRUE, mtry=3, data=train_set, na.action=na.roughfix)
-
-#variable_importance <- importance(mookie_rf)
-#knitr::kable(head(round(variable_importance, digits=2)))
+img <- readPNG('image.png')
+grid::grid.raster(img)
 ```
+This tree shows us the what the likelihood outcome of a pitch is based on location, type, and speed.
+
+Lets try and use a Random Forest
+```{r rf,  message=F, warning=F}
+mookie_bat_data_converted$pitch_name = as.numeric(mookie_bat_data_converted$pitch_name)
+
+mookie_bat_data_converted <- droplevels(mookie_bat_data_converted)
+
+train_set <- mookie_bat_data_converted %>% 
+  group_by(events) %>%
+  sample_frac(.6) %>%
+  ungroup()
+
+test_set <- mookie_bat_data_converted %>%
+  anti_join(train_set)
+
+train_set
+test_set
+mookie_rf <- randomForest(events~pitch_name+plate_x+plate_z, data=train_set)
+
+
+test_predictions <- predict(mookie_rf, newdata=test_set)
+cm <- table(pred=test_predictions, observed=test_set$events)
+
+confusionMatrix(cm)
+```
+46% accurate is really bad. So there might not be enough data on mookie to predict properly.
+What if we try on all the red sox batters with as many predictors as we can get. We forgot that a 3-0 count is never gonna result in a strikeout whereas a 0-2 will never get a walk, and if no one is one base there can't be a doulbe play. So we add as many predictors as we can.       
+```{r Type converting,  message=F, warning=F}
+# We filter out na's and select our columns.
+final_batting_data_table_converted <- final_batting_data_table %>%
+  mutate(release_speed=replace(release_speed, release_speed=="null", 0))%>%
+   mutate(pfx_x=replace(pfx_x, pfx_x=="null", 0))%>%
+   mutate(pfx_z=replace(pfx_z, pfx_z=="null", 0))%>%
+   mutate(plate_x=replace(plate_x, plate_x=="null", 0))%>%
+   mutate(plate_z=replace(plate_z, plate_z=="null", 0))%>%
+   mutate(on_1b=replace(on_1b, on_1b=="null", 0))%>%
+   mutate(on_2b=replace(on_2b, on_2b=="null", 0))%>%
+   mutate(on_3b=replace(on_3b, on_3b=="null", 0))%>%
+   mutate(hit_location=replace(hit_location, hit_location=="null", 0))%>%
+  mutate(hit_distance_sc=replace(hit_distance_sc, hit_distance_sc=="null", 0))%>%
+  mutate(launch_angle=replace(launch_angle, launch_angle=="null", 0))%>%
+  mutate(launch_speed=replace(launch_speed, launch_speed=="null", 0))%>%
+  
+  type_convert(cols(release_speed=col_double(), pfx_x=col_double(), pfx_z=col_double(), plate_x=col_double(), plate_z=col_double(), on_1b=col_double(), on_2b=col_double(), on_3b=col_double(), hit_distance_sc=col_double(), launch_angle=col_double(), launch_speed=col_double(), hit_location=col_double())) %>%
+  filter(events!="intent_walk") %>%
+  filter(events!="null") %>%
+  filter(!is.na(plate_x)) %>%
+  filter(!is.na(plate_z)) %>%
+  filter(!is.na(pitch_name)) %>%
+  filter(!is.na(release_speed)) %>%
+  mutate(rbi=post_bat_score-bat_score) %>%
+  select(events, pitch_name, release_speed, plate_x, plate_z, pfx_x, pfx_z, batter, pitcher, balls, strikes, outs_when_up, on_1b, on_2b, on_3b, hit_location, pfx_x, pfx_z, hit_distance_sc, launch_speed, launch_angle, pitch_number, rbi)
+```
+
+```{r prediction on all}
+final_batting_data_table_converted$pitch_name <- as.factor(final_batting_data_table_converted$pitch_name)
+final_batting_data_table_converted$events <- as.factor(final_batting_data_table_converted$events)
+
+final_batting_data_table_converted$on_1b[is.na(final_batting_data_table_converted$on_1b)] <- 0
+final_batting_data_table_converted$on_2b[is.na(final_batting_data_table_converted$on_2b)] <- 0
+final_batting_data_table_converted$on_3b[is.na(final_batting_data_table_converted$on_3b)] <- 0
+
+# We convert the pitch name to numeric
+final_batting_data_table_converted$pitch_name = as.numeric(final_batting_data_table_converted$pitch_name)
+
+# We drop unused levels
+final_batting_data_table_converted <- droplevels(final_batting_data_table_converted)
+
+# Use 60/40 split for train data / test data
+train_set <- final_batting_data_table_converted %>% 
+  group_by(events) %>%
+  sample_frac(.8) %>%
+  ungroup()
+
+test_set <- final_batting_data_table_converted %>%
+  anti_join(train_set)
+
+train_set
+test_set
+final_rf <- randomForest(events~batter+pitcher+pitch_name+plate_x+plate_z+release_speed+balls+strikes+outs_when_up+on_1b+on_2b+on_3b+hit_location+pfx_x+pfx_z+hit_distance_sc+launch_speed+launch_angle+pitch_number+rbi, data=train_set)
+
+test_predictions <- predict(final_rf, newdata=test_set)
+cm <- table(pred=test_predictions, observed=test_set$events)
+
+confusionMatrix(cm)
+
+```
+85% accuracy is a lot better. By adding more predictors we were able to drastically improve our accuracy.
